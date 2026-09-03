@@ -7,7 +7,23 @@ import { chains, tokens } from '@/lib/data';
 const tokenCache = new Map();
 let chainsCache = null;
 const FETCH_TIMEOUT = 20000; // Allow the server time to finish the LiFi request.
-const TOKEN_CHAIN_BATCH_SIZE = 8;
+const BACKGROUND_BATCH_SIZE = 20;
+
+function splitIntoBatches(items, size) {
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
+function mergeChainLists(currentChains, incomingChains) {
+  const merged = new Map(currentChains.map((chain) => [String(chain.id), chain]));
+  for (const chain of incomingChains) {
+    merged.set(String(chain.id), { ...merged.get(String(chain.id)), ...chain });
+  }
+  return [...merged.values()];
+}
 
 function mergeTokenLists(staticTokens, liveTokens) {
   const merged = new Map(
@@ -39,16 +55,19 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT) {
 
 export default function TokenSelectModal({ field, defaultChainId, onClose, onSelect }) {
   const [availableChains, setAvailableChains] = useState(chains); // Start with static data
+  const [liveChainIds, setLiveChainIds] = useState(null);
   const chainsRefreshed = useRef(false);
 
   // Load chains in background without blocking UI
   useEffect(() => {
+    let cancelled = false;
     if (chainsRefreshed.current) return;
     chainsRefreshed.current = true;
     
     // Use cached chains if available
     if (chainsCache) {
       setAvailableChains(chainsCache);
+      setLiveChainIds(chainsCache.map((chain) => chain.id));
       return;
     }
 
@@ -59,7 +78,12 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
           const data = await res.json();
           if (data?.chains?.length) {
             chainsCache = data.chains;
-            setAvailableChains(data.chains);
+            setLiveChainIds(data.chains.map((chain) => chain.id));
+            for (const batch of splitIntoBatches(data.chains, BACKGROUND_BATCH_SIZE)) {
+              if (cancelled) return;
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              setAvailableChains((current) => mergeChainLists(current, batch));
+            }
           }
         }
       })
@@ -67,6 +91,8 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
         // Network error or timeout - keep static data
         chainsCache = chains;
       });
+
+      return () => { cancelled = true; };
   }, []);
 
   const [query, setQuery] = useState('');
@@ -80,7 +106,7 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
     let cancelled = false;
     const targetChainIds = chainId !== null
       ? [chainId]
-      : availableChains.map((chain) => chain.id);
+      : (liveChainIds || availableChains.map((chain) => chain.id));
     const cacheKey = `${chainId ?? 'all'}:${targetChainIds.join(',')}`;
     const fallbackTokens = chainId ? tokens.filter((t) => t.chain === chainId) : tokens.slice(0, 120);
     const cached = tokenCache.get(cacheKey);
@@ -91,33 +117,28 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
 
     // Fetch live tokens asynchronously in background without blocking UI
     if (targetChainIds.length > 0 && !cached?.length) {
-      const batches = [];
-      for (let index = 0; index < targetChainIds.length; index += TOKEN_CHAIN_BATCH_SIZE) {
-        batches.push(targetChainIds.slice(index, index + TOKEN_CHAIN_BATCH_SIZE));
-      }
+      const batches = splitIntoBatches(targetChainIds, BACKGROUND_BATCH_SIZE);
 
-      Promise.all(batches.map(async (batch) => {
-        const response = await fetchWithTimeout(`/api/tokens?chains=${batch.join(',')}`, {}, FETCH_TIMEOUT);
-        if (!response?.ok) return [];
-        const data = await response.json();
-        return data?.tokens || [];
-      }))
-        .then((liveTokenBatches) => {
-          if (cancelled) return;
-          const liveTokens = liveTokenBatches.flat();
-          if (liveTokens.length > 0) {
-            const mergedTokens = mergeTokenLists(fallbackTokens, liveTokens);
+      (async () => {
+        let mergedTokens = fallbackTokens;
+        for (const batch of batches) {
+          const response = await fetchWithTimeout(`/api/tokens?chains=${batch.join(',')}`, {}, FETCH_TIMEOUT);
+          if (!response?.ok) continue;
+          const data = await response.json();
+          mergedTokens = mergeTokenLists(mergedTokens, data?.tokens || []);
+          if (!cancelled && mergedTokens.length > fallbackTokens.length) {
             tokenCache.set(cacheKey, mergedTokens);
             setModalTokens(mergedTokens);
           }
-        })
-        .catch(() => {
-          // Timeout or network error - keep static data (already set)
-        });
+        }
+      })().catch(() => {
+        // Timeout or network error - keep static data (already set)
+      });
+
     }
 
     return () => { cancelled = true; };
-  }, [chainId, availableChains]);
+  }, [chainId, liveChainIds]);
 
   const pool = useMemo(
     () => (memeFilter ? tokens.filter((t) => t.tag === 'MEME') : modalTokens),
