@@ -130,8 +130,8 @@ function FlowDiagram({ flows }) {
   ) * 34 + 60);
   const padY = 30;
 
-  const leftChains = useMemo(() => [...new Set(flows.map((f) => f.from))], [flows]);
-  const rightChains = useMemo(() => [...new Set(flows.map((f) => f.to))], [flows]);
+  const leftChains = useMemo(() => [...new Set([...CHAINS, ...flows.map((f) => f.from)])], [flows]);
+  const rightChains = useMemo(() => [...new Set([...CHAINS, ...flows.map((f) => f.to)])], [flows]);
 
   const yFor = (arr, name) => {
     const i = arr.indexOf(name);
