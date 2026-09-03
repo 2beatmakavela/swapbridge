@@ -37,7 +37,7 @@ export async function GET() {
         volume: Number(bridge.volumePrevDay),
       }))
       .sort((a, b) => b.volume - a.volume)
-      .slice(0, 9);
+      .slice(0, 50);
 
     return Response.json({
       isLive: true,
