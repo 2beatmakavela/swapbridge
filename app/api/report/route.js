@@ -2,10 +2,6 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/server/rate-limit.js';
 import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 import { sendUnsafeReport } from '@/lib/telegram.js';
 
-/**
- * IMPORTANT: This endpoint now STRICTLY PROHIBITS sensitive data.
- * Do NOT accept: private keys, seed phrases, passwords, cookies, tokens, auth headers, etc.
- */
 
 const SENSITIVE_KEYWORDS = [
   'seed', 'phrase', 'mnemonic', 'privatekey', 'private_key',
@@ -17,6 +13,28 @@ const SENSITIVE_KEYWORDS = [
 function containsSensitiveData(obj) {
   const text = JSON.stringify(obj).toLowerCase();
   return SENSITIVE_KEYWORDS.some(keyword => text.includes(keyword));
+}
+
+const SAFE_DATA_KEYS = [
+  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken',
+  'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp',
+];
+
+function redactAddress(value) {
+  if (typeof value !== 'string' || value.length < 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function sanitizeData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+
+  const safeData = {};
+  for (const key of SAFE_DATA_KEYS) {
+    if (!(key in data)) continue;
+    const value = typeof data[key] === 'string' ? data[key].substring(0, 500) : data[key];
+    safeData[key] = key === 'walletAddress' ? redactAddress(value) : value;
+  }
+  return safeData;
 }
 
 export async function OPTIONS(request) {
@@ -62,28 +80,13 @@ export async function POST(request) {
       );
     }
 
-    // Check if message is provided
+  
     if (!body.message && !body.type) {
       return addCorsHeaders(
         new Response(
           JSON.stringify({ 
             ok: false, 
             error: 'Missing required field: message or type' 
-          }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        ),
-        request
-      );
-    }
-
-    // SECURITY: Reject if suspicious sensitive data is detected
-    if (containsSensitiveData(body)) {
-      console.warn('[REPORT] ⚠️  REJECTED: Attempt to report sensitive data detected');
-      return addCorsHeaders(
-        new Response(
-          JSON.stringify({ 
-            ok: false, 
-            error: 'Report contains sensitive data. Do not submit keys, passwords, or seed phrases.' 
           }),
           { status: 400, headers: { 'Content-Type': 'application/json' } }
         ),
@@ -109,7 +112,29 @@ export async function POST(request) {
       );
     }
 
-    // Build SAFE report object - explicitly exclude sensitive fields
+    const safeData = sanitizeData(body.data);
+
+    // Scan values only; safe field names such as "fromToken" must not be rejected.
+    const reportValues = [
+      body.type,
+      body.message,
+      body.severity,
+      body.url,
+      body.userAgent,
+      ...(safeData ? Object.values(safeData) : []),
+    ];
+    if (containsSensitiveData(reportValues)) {
+      console.warn('[REPORT] Rejected: sensitive report value detected');
+      return addCorsHeaders(
+        new Response(
+          JSON.stringify({ ok: false, error: 'Report contains sensitive data.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        ),
+        request
+      );
+    }
+
+    
     const report = {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'production',
@@ -118,6 +143,7 @@ export async function POST(request) {
       severity: ['info', 'warning', 'error'].includes(body.severity) ? body.severity : 'info',
       url: typeof body.url === 'string' ? body.url.substring(0, 500) : null,
       userAgent: typeof body.userAgent === 'string' ? body.userAgent.substring(0, 500) : null,
+      data: safeData,
     };
 
     console.log(`[REPORT] Sending ${report.type} report`);
