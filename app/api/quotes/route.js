@@ -2,14 +2,44 @@ import { captureServerException, initServerSentry } from '@/lib/server/sentry.js
 import { getAllQuotes } from '@/lib/engines.js';
 import { normalizeWalletAddress, sanitizeRequestBody, validateQuotePayload } from '@/lib/server/validation.js';
 import { rateLimit } from '@/lib/server/redis.js';
+import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 
 initServerSentry();
+
+const QUOTE_TIMEOUT = 3000; // 3 seconds max wait for quotes
 
 function createErrorResponse(message, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+async function getAllQuotesWithTimeout(ctx) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), QUOTE_TIMEOUT);
+
+  try {
+    const quotesPromise = getAllQuotes(ctx);
+    // Race between quotes and timeout
+    const result = await Promise.race([
+      quotesPromise,
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Quote fetch timeout')), QUOTE_TIMEOUT);
+      })
+    ]);
+    clearTimeout(timeoutId);
+    return result || [];
+  } catch (error) {
+    clearTimeout(timeoutId);
+    // Return empty routes array instead of throwing
+    console.warn('[Quote Timeout]', error?.message);
+    return [];
+  }
+}
+
+export async function OPTIONS(request) {
+  return addCorsHeaders(handleCorsPreFlight(request), request);
 }
 
 export async function POST(request) {
@@ -19,17 +49,32 @@ export async function POST(request) {
   try {
     const limitResult = await rateLimit(`rate:quotes:${ip}`, 30, 60);
     if (!limitResult.allowed) {
-      return createErrorResponse('Rate limit exceeded.', 429);
+      return addCorsHeaders(
+        createErrorResponse('Rate limit exceeded.', 429),
+        request
+      );
     }
 
-    const body = await request.json().catch(() => null);
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return addCorsHeaders(
+        createErrorResponse('Invalid JSON in request body', 400),
+        request
+      );
+    }
+
     const validation = validateQuotePayload(body);
     if (!validation.valid) {
-      return createErrorResponse(validation.message, 422);
+      return addCorsHeaders(
+        createErrorResponse(validation.message, 422),
+        request
+      );
     }
 
     const walletAddress = normalizeWalletAddress(body.walletAddress) || '0x0000000000000000000000000000000000000000';
-    const result = await getAllQuotes({
+    const result = await getAllQuotesWithTimeout({
       fromToken: body.fromToken,
       toToken: body.toToken,
       sendAmount: body.sendAmount,
@@ -38,12 +83,21 @@ export async function POST(request) {
       settings: body.settings || {},
     });
 
-    return new Response(JSON.stringify({ requestId, routes: result }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
+    return addCorsHeaders(
+      new Response(JSON.stringify({ requestId, routes: result }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+      request
+    );
   } catch (error) {
     captureServerException(error, { requestId, path: '/api/quotes' });
-    return createErrorResponse('Unable to fetch quotes at this time.', 502);
+    return addCorsHeaders(
+      new Response(JSON.stringify({ requestId, routes: [], error: 'Internal server error' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      }),
+      request
+    );
   }
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle, Sparkles, ShieldCheck, Trophy } from 'lucide-react';
+import { CheckCircle, Sparkles, ShieldCheck, Trophy, RefreshCw } from 'lucide-react';
+import { useRealtimeData } from '@/lib/realtime-context';
 
 const missionData = [
   {
@@ -29,6 +30,7 @@ const missionData = [
 
 export default function MissionsSection() {
   const [searchTerm, setSearchTerm] = useState('');
+  const { missionProgress, isLoading, refreshMissions } = useRealtimeData();
 
   const filteredMissions = useMemo(() => {
     const normalized = searchTerm.trim().toLowerCase();
@@ -51,8 +53,28 @@ export default function MissionsSection() {
           </p>
         </div>
         <div className="missions-highlight-card">
-          <span>4 active missions</span>
-          <strong>+500 XP possible</strong>
+          <div>
+            <span>{missionProgress.activeCount || 4} active missions</span>
+            <strong>+{missionProgress.availableXP || 500} XP possible</strong>
+          </div>
+          <button
+            onClick={refreshMissions}
+            style={{
+              background: 'rgba(139, 92, 246, 0.1)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              color: 'rgba(255,255,255,0.7)',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.85rem',
+              marginTop: '12px',
+            }}
+          >
+            <RefreshCw size={14} /> {isLoading ? 'Updating...' : 'Refresh'}
+          </button>
         </div>
       </div>
 
@@ -66,21 +88,58 @@ export default function MissionsSection() {
       </div>
 
       <div className="missions-list">
-        {filteredMissions.map((mission) => (
-          <div key={mission.id} className="mission-card">
-            <div className="mission-card-title">
-              <CheckCircle size={20} />
-              <div>
-                <h3>{mission.title}</h3>
-                <p>{mission.description}</p>
+        {filteredMissions.map((mission) => {
+          const progress = missionProgress[mission.id] || {};
+          const progressPercent = progress.progress || 0;
+          const isCompleted = progress.completed || false;
+
+          return (
+            <div key={mission.id} className="mission-card" style={{ opacity: isCompleted ? 0.8 : 1 }}>
+              <div className="mission-card-title">
+                <CheckCircle size={20} style={{ color: isCompleted ? '#4ade80' : 'currentColor' }} />
+                <div>
+                  <h3>{mission.title}</h3>
+                  <p>{mission.description}</p>
+                </div>
+              </div>
+              <div className="mission-card-meta">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '4px' }}>
+                    {isCompleted ? '✓ Completed' : `${progressPercent}% complete`}
+                  </div>
+                  <div
+                    style={{
+                      height: '6px',
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      borderRadius: '3px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        background: isCompleted
+                          ? '#4ade80'
+                          : 'linear-gradient(90deg, #8b5cf6, #06b6d4)',
+                        width: `${progressPercent}%`,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
+                  </div>
+                </div>
+                <span
+                  style={{
+                    marginLeft: '12px',
+                    fontWeight: '600',
+                    color: '#fbbf24',
+                  }}
+                >
+                  {mission.reward}
+                </span>
               </div>
             </div>
-            <div className="mission-card-meta">
-              <span>{mission.reward}</span>
-              <span className="mission-progress">{mission.progress}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

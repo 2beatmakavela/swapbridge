@@ -13,8 +13,10 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { chains, tokens } from '@/lib/data';
+import { useRealtimeData } from '@/lib/realtime-context';
 
 const pageTabs = ['For you', 'All markets', 'Your positions'];
 const timeFilters = ['7d', '30d'];
@@ -223,14 +225,13 @@ export default function EarnSection() {
   const [search, setSearch] = useState('');
   const [activeFilters, setActiveFilters] = useState(defaultFilters);
   const [marketData, setMarketData] = useState([]);
-  const [coinPrices, setCoinPrices] = useState({});
-  const [priceChange, setPriceChange] = useState({});
   const [activeTab, setActiveTab] = useState('All markets');
   const [activeTime, setActiveTime] = useState('7d');
   const [currentPage, setCurrentPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedMarketId, setSelectedMarketId] = useState(null);
+
+  // Use real-time data from context
+  const { coinPrices, priceChange, isLoading, lastUpdate, refreshPrices } = useRealtimeData();
 
   useEffect(() => {
     const liveMarketData = tokens.map((token) => {
@@ -260,42 +261,6 @@ export default function EarnSection() {
     });
 
     setMarketData(liveMarketData);
-
-    const fetchLivePrices = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const symbols = Array.from(new Set(liveMarketData.map((market) => market.asset))).filter(Boolean);
-        const lookup = await resolveCoinGeckoAssetIds(symbols);
-        const ids = Array.from(new Set(Object.values(lookup))).filter(Boolean);
-        const response = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`
-        );
-
-        if (!response.ok) {
-          throw new Error('Failed to load live prices');
-        }
-
-        const data = await response.json();
-        const prices = {};
-        const changes = {};
-
-        Object.entries(lookup).forEach(([asset, id]) => {
-          prices[asset] = data[id]?.usd ?? (asset === 'USDC' || asset === 'USDT' ? 1 : 0);
-          changes[asset] = data[id]?.usd_24h_change ?? 0;
-        });
-
-        setCoinPrices(prices);
-        setPriceChange(changes);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLivePrices();
   }, []);
 
   const chainNames = useMemo(
@@ -481,7 +446,27 @@ export default function EarnSection() {
           <span className="earn-summary-text">Showing {activeTime} yield and live prices</span>
         </div>
         <div className="earn-summary-note">
-          {loading ? 'Loading live prices…' : error ? `Price fetch failed: ${error}` : 'Prices updated from CoinGecko'}
+          {isLoading ? (
+            <span>Loading live prices…</span>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Prices updated in real-time</span>
+              <button
+                onClick={refreshPrices}
+                title="Refresh prices"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: 'rgba(255,255,255,0.6)',
+                }}
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

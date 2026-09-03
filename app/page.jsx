@@ -1,5 +1,5 @@
-import BoltSwapApp from '@/components/BoltSwapApp';
+import BoltswapLanding from './BoltswapLanding';
 
-export default function Page() {
-  return <BoltSwapApp />;
+export default function HomePage() {
+  return <BoltswapLanding />;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Search,
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   Wallet,
   Star,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import {
   chains,
@@ -18,8 +19,8 @@ import {
   mockPrice,
   tokens,
 } from '@/lib/data';
-import { fetchLiveChains } from '@/lib/lifi';
 import { BRIDGE_ENGINES, chainDexMap } from '@/lib/engines';
+import { useRealtimeData } from '@/lib/realtime-context';
 
 const tabs = ['Overview', 'Tokens', 'DeFi Protocols'];
 const protocolCards = [
@@ -58,29 +59,68 @@ function formatPercent(value) {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+let chainsCache = null;
+const FETCH_TIMEOUT = 2000; // 2 second timeout
+
+// Helper: Fetch with timeout
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 export default function PortfolioSection({ onOpenTrade = () => {} }) {
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchTerm, setSearchTerm] = useState('');
-  const [liveChains, setLiveChains] = useState(chains);
-  const [liveBridgeCount, setLiveBridgeCount] = useState(
-    BRIDGE_ENGINES.filter((engine) => engine.live).length,
-  );
-  const [liveDexCount, setLiveDexCount] = useState(
-    new Set(Object.values(chainDexMap).flat()).size,
-  );
+  const [liveChains, setLiveChains] = useState(chains); // Start with static data
+  const [selectedToken, setSelectedToken] = useState(null);
+  const chainsRefreshed = useRef(false);
 
+  // Use real-time data from context
+  const { portfolioStats, chainStats, isLoading, refreshPortfolio, refreshStats } = useRealtimeData();
+
+  const [liveBridgeCount, setLiveBridgeCount] = useState(chainStats.bridgeCount || 32);
+  const [liveDexCount, setLiveDexCount] = useState(chainStats.dexCount || 37);
+
+  // Update bridge and dex counts when stats change
   useEffect(() => {
-    let cancelled = false;
-    fetchLiveChains()
-      .then((data) => {
-        if (!cancelled && data?.length) {
-          setLiveChains(data);
+    if (chainStats.bridgeCount) setLiveBridgeCount(chainStats.bridgeCount);
+    if (chainStats.dexCount) setLiveDexCount(chainStats.dexCount);
+  }, [chainStats]);
+
+  // Load chains in background without blocking UI
+  useEffect(() => {
+    if (chainsRefreshed.current) return;
+    chainsRefreshed.current = true;
+
+    // Use cached chains if available
+    if (chainsCache) {
+      setLiveChains(chainsCache);
+      return;
+    }
+
+    // Fetch live chains asynchronously in background (non-blocking)
+    fetchWithTimeout('/api/chains', {}, FETCH_TIMEOUT)
+      .then(async (res) => {
+        if (res?.ok) {
+          const data = await res.json();
+          if (data?.chains?.length) {
+            chainsCache = data.chains;
+            setLiveChains(data.chains);
+          }
         }
       })
       .catch(() => {
-        // Leave fallback counts in place if live fetch fails.
+        // Network error or timeout - keep static data
+        chainsCache = chains;
       });
-    return () => { cancelled = true; };
   }, []);
 
   const holdings = useMemo(() => {
@@ -106,8 +146,6 @@ export default function PortfolioSection({ onOpenTrade = () => {} }) {
   );
 
   const totalAssets = holdings.length;
-
-  const [selectedToken, setSelectedToken] = useState(null);
 
   const visibleHoldings = useMemo(() => {
     const normalized = searchTerm.trim().toLowerCase();
@@ -184,15 +222,46 @@ export default function PortfolioSection({ onOpenTrade = () => {} }) {
               </div>
               <h3>Net worth growth</h3>
               <p>Performance across your assets and protocols over the last 30 days.</p>
-              <strong>+12.4%</strong>
+              <strong style={{ color: portfolioStats.change24h >= 0 ? '#4ade80' : '#f87171' }}>
+                {portfolioStats.changePercent >= 0 ? '+' : ''}{portfolioStats.changePercent?.toFixed(2)}%
+              </strong>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginTop: '4px' }}>
+                ${portfolioStats.change24h?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+              <button
+                onClick={refreshPortfolio}
+                style={{
+                  marginTop: '8px',
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)',
+                  color: 'rgba(255,255,255,0.6)',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                }}
+              >
+                <RefreshCw size={12} /> Refresh
+              </button>
             </div>
             <div className="portfolio-overview-card">
               <div className="portfolio-card-icon">
                 <Wallet size={18} />
               </div>
-              <h3>Wallet exposure</h3>
-              <p>Balanced and diversified positions across blue chip and emerging markets.</p>
-              <strong>{totalAssets} assets</strong>
+              <h3>Total portfolio value</h3>
+              <p>Your total holdings across all tokens and chains.</p>
+              <strong>
+                $
+                {portfolioStats.totalValue?.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+              </strong>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginTop: '4px' }}>
+                {isLoading ? 'Updating...' : 'Real-time'}
+              </div>
             </div>
             <div className="portfolio-overview-card">
               <div className="portfolio-card-icon">
@@ -201,6 +270,24 @@ export default function PortfolioSection({ onOpenTrade = () => {} }) {
               <h3>Protocol allocation</h3>
               <p>Track your active DeFi exposure by lending, staking, and trading protocols.</p>
               <strong>{protocolCards.length} protocols</strong>
+              <button
+                onClick={refreshStats}
+                style={{
+                  marginTop: '8px',
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)',
+                  color: 'rgba(255,255,255,0.6)',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                }}
+              >
+                <RefreshCw size={12} /> Refresh
+              </button>
             </div>
           </div>
         )}

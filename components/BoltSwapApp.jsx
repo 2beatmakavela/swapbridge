@@ -6,12 +6,10 @@ import confetti from 'canvas-confetti';
 import { chains, tokens, defaultBridges, defaultExchanges } from '@/lib/data';
 import { receiveAmountFormatted } from '@/lib/format';
 import { useQuote } from '@/hooks/useQuote';
+import BackgroundCanvas from './BackgroundCanvas';
 
 const LoadingFallback = () => <div className="loading-fallback">Loading...</div>;
 
-const BackgroundCanvas = dynamic(() => import('./BackgroundCanvas'), {
-  loading: LoadingFallback,
-});
 const EarnSection = dynamic(() => import('./EarnSection'), {
   loading: LoadingFallback,
 });
@@ -56,7 +54,7 @@ function defaultSettings() {
 
 const PLACEHOLDER_ADDRESS = '0x1111111111111111111111111111111111111111';
 
-export default function BoltSwapApp({ initialSection = 'trade' }) {
+export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) {
   const [fromToken, setFromToken] = useState(null);
   const [toToken, setToToken] = useState(null);
   const [sendAmount, setSendAmount] = useState('');
@@ -141,6 +139,23 @@ export default function BoltSwapApp({ initialSection = 'trade' }) {
       setWalletAddress(address);
     }
     setActiveModal(null);
+    fetch('/api/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'user_action',
+        severity: 'info',
+        message: 'Wallet connected',
+        data: {
+          action: 'connect_wallet',
+          wallet: label,
+          walletAddress: address || null,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        },
+      }),
+    }).catch((reportError) => console.error('[wallet report]', reportError));
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 }, colors: ['#8b5cf6', '#06b6d4', '#4ade80'] });
   }
 
@@ -176,6 +191,23 @@ export default function BoltSwapApp({ initialSection = 'trade' }) {
       }
 
       const data = await response.json();
+      await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'transaction',
+          severity: 'info',
+          message: 'Swap completed',
+          data: {
+            fromToken: fromToken.sym,
+            toToken: toToken.sym,
+            amount: sendAmount,
+            walletAddress,
+            status: 'completed',
+            requestId: data.requestId,
+          },
+        }),
+      });
       const now = new Date();
       const newTx = {
         id: `${now.getTime()}-${transactions.length}`,
@@ -193,6 +225,23 @@ export default function BoltSwapApp({ initialSection = 'trade' }) {
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#8b5cf6', '#06b6d4', '#ec4899', '#ffffff'] });
     } catch (err) {
       console.error('[handleActionClick]', err?.message || err);
+      await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'transaction',
+          severity: 'high',
+          message: 'Swap failed',
+          data: {
+            fromToken: fromToken?.sym || null,
+            toToken: toToken?.sym || null,
+            amount: sendAmount,
+            walletAddress,
+            status: 'failed',
+            error: err?.message || 'Unknown swap error',
+          },
+        }),
+      }).catch((reportError) => console.error('[swap report]', reportError));
     }
   }
 
@@ -205,9 +254,12 @@ export default function BoltSwapApp({ initialSection = 'trade' }) {
     <div className="app-container">
       <BackgroundCanvas />
       <Navbar
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
         connectedLabel={connectedLabel}
         onOpenConnect={() => setActiveModal({ type: 'connect' })}
         onOpenScan={() => setActiveModal({ type: 'scan' })}
+        onGoHome={onBackToHome}
       />
 
       <div className="content-row">

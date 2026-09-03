@@ -48,19 +48,19 @@ function FolderIcon(props) {
   );
 }
 
-export default function Navbar({ connectedLabel, onOpenConnect, onOpenScan }) {
+export default function Navbar({ connectedLabel, onOpenConnect, onOpenScan, onGoHome, activeSection: activeSectionProp, onSelectSection }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [languagePanelOpen, setLanguagePanelOpen] = useState(false);
   const [resourcesPanelOpen, setResourcesPanelOpen] = useState(false);
-  const activeSection = pathname?.startsWith('/earn')
+  const activeSection = activeSectionProp || (pathname?.startsWith('/earn')
     ? 'earn'
     : pathname?.startsWith('/portfolio')
     ? 'portfolio'
     : pathname?.startsWith('/missions')
     ? 'missions'
-    : 'trade';
+    : 'trade');
   const wrapRef = useRef(null);
   const { t, language, setLanguage, languages } = useTranslation();
 
@@ -88,7 +88,17 @@ export default function Navbar({ connectedLabel, onOpenConnect, onOpenScan }) {
     <header className="navbar-wrap">
       <div className="navbar">
         <div className="navbar-left">
-          <div className="navbar-brand">
+          <Link
+            href="/"
+            className="navbar-brand"
+            aria-label="BoltSwap home"
+            onClick={(e) => {
+              if (onGoHome) {
+                e.preventDefault();
+                onGoHome();
+              }
+            }}
+          >
             <img
               src="/icons/apple-touch-icon-180x180.png"
               alt="BoltSwap logo"
@@ -96,12 +106,12 @@ export default function Navbar({ connectedLabel, onOpenConnect, onOpenScan }) {
               style={{ width: 32, height: 32, objectFit: 'contain', background: 'transparent', padding: 0, border: 'none', marginLeft: 12 }}
             />
             <span className="brand-title-text">BOLTSWAP</span>
-          </div>
+          </Link>
           <nav className="navbar-links">
-            <Link href="/" className={activeSection === 'trade' ? 'active' : ''}>{t.trade}</Link>
-            <Link href="/earn" className={activeSection === 'earn' ? 'active' : ''}>{t.earn}</Link>
-            <Link href="/portfolio" className={activeSection === 'portfolio' ? 'active' : ''}>{t.portfolio}</Link>
-            <Link href="/missions" className={activeSection === 'missions' ? 'active' : ''}>{t.missions}</Link>
+            <button type="button" className={activeSection === 'trade' ? 'active' : ''} onClick={() => onSelectSection?.('trade')}>{t.trade}</button>
+            <button type="button" className={activeSection === 'earn' ? 'active' : ''} onClick={() => onSelectSection?.('earn')}>{t.earn}</button>
+            <button type="button" className={activeSection === 'portfolio' ? 'active' : ''} onClick={() => onSelectSection?.('portfolio')}>{t.portfolio}</button>
+            <button type="button" className={activeSection === 'missions' ? 'active' : ''} onClick={() => onSelectSection?.('missions')}>{t.missions}</button>
           </nav>
         </div>
 
@@ -197,10 +207,10 @@ export default function Navbar({ connectedLabel, onOpenConnect, onOpenScan }) {
         {!languagePanelOpen && !resourcesPanelOpen ? (
           <>
             <div className="mobile-nav-section">
-              <Link href="/" className={activeSection === 'trade' ? 'active' : ''} onClick={() => setMobileOpen(false)}>{t.trade}</Link>
-              <Link href="/earn" className={activeSection === 'earn' ? 'active' : ''} onClick={() => setMobileOpen(false)}>{t.earn}</Link>
-              <Link href="/portfolio" className={activeSection === 'portfolio' ? 'active' : ''} onClick={() => setMobileOpen(false)}>{t.portfolio}</Link>
-              <Link href="/missions" className={activeSection === 'missions' ? 'active' : ''} onClick={() => setMobileOpen(false)}>{t.missions}</Link>
+              <button type="button" className={activeSection === 'trade' ? 'active' : ''} onClick={() => { onSelectSection?.('trade'); setMobileOpen(false); }}>{t.trade}</button>
+              <button type="button" className={activeSection === 'earn' ? 'active' : ''} onClick={() => { onSelectSection?.('earn'); setMobileOpen(false); }}>{t.earn}</button>
+              <button type="button" className={activeSection === 'portfolio' ? 'active' : ''} onClick={() => { onSelectSection?.('portfolio'); setMobileOpen(false); }}>{t.portfolio}</button>
+              <button type="button" className={activeSection === 'missions' ? 'active' : ''} onClick={() => { onSelectSection?.('missions'); setMobileOpen(false); }}>{t.missions}</button>
             </div>
             <div className="navbar-dropdown-divider" />
             <div className="mobile-actions-column">

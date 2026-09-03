@@ -1,79 +1,117 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { X, Search } from 'lucide-react';
 import { chains, tokens } from '@/lib/data';
-import { fetchLiveChains, fetchLiveTokens } from '@/lib/lifi';
 
 const tokenCache = new Map();
+let chainsCache = null;
+const FETCH_TIMEOUT = 20000; // Allow the server time to finish the LiFi request.
+
+function mergeTokenLists(staticTokens, liveTokens) {
+  const merged = new Map(
+    staticTokens.map((token) => [
+      `${token.chain}:${String(token.address || token.sym).toLowerCase()}`,
+      token,
+    ]),
+  );
+  for (const token of liveTokens || []) {
+    const key = `${token.chain}:${String(token.address || token.sym).toLowerCase()}`;
+    merged.set(key, { ...merged.get(key), ...token });
+  }
+  return [...merged.values()];
+}
+
+// Helper: Fetch with timeout
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
 
 export default function TokenSelectModal({ field, defaultChainId, onClose, onSelect }) {
-  const [availableChains, setAvailableChains] = useState(chains);
-  const [chainsLoading, setChainsLoading] = useState(false);
+  const [availableChains, setAvailableChains] = useState(chains); // Start with static data
+  const chainsRefreshed = useRef(false);
 
+  // Load chains in background without blocking UI
   useEffect(() => {
-    let cancelled = false;
-    setChainsLoading(true);
-    fetchLiveChains()
-      .then((data) => {
-        if (!cancelled && data?.length) {
-          setAvailableChains(data);
+    if (chainsRefreshed.current) return;
+    chainsRefreshed.current = true;
+    
+    // Use cached chains if available
+    if (chainsCache) {
+      setAvailableChains(chainsCache);
+      return;
+    }
+
+    // Fetch live chains asynchronously in background (non-blocking)
+    fetchWithTimeout('/api/chains', {}, FETCH_TIMEOUT)
+      .then(async (res) => {
+        if (res?.ok) {
+          const data = await res.json();
+          if (data?.chains?.length) {
+            chainsCache = data.chains;
+            setAvailableChains(data.chains);
+          }
         }
       })
       .catch(() => {
-        setAvailableChains(chains);
-      })
-      .finally(() => {
-        if (!cancelled) setChainsLoading(false);
+        // Network error or timeout - keep static data
+        chainsCache = chains;
       });
-
-    return () => { cancelled = true; };
   }, []);
+
   const [query, setQuery] = useState('');
+  const [chainQuery, setChainQuery] = useState('');
   const [chainId, setChainId] = useState(defaultChainId ?? null);
   const [memeFilter, setMemeFilter] = useState(false);
-  const [modalTokens, setModalTokens] = useState(tokens);
+  const [modalTokens, setModalTokens] = useState(tokens.slice(0, 120)); // Start with static data
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const supportedChainIds = new Set(availableChains.map((c) => c.id));
-    const useAllChains = chainId === null;
-    const queryString = query.trim().toLowerCase();
-    const shouldFetchAllChains = useAllChains && queryString.length >= 2;
-    const canFetch = chainId !== null || shouldFetchAllChains;
-    const cacheKey = canFetch ? String(chainId ?? 'all') : `fallback:${chainId ?? 'all'}`;
+    const cacheKey = String(chainId ?? 'all');
     const fallbackTokens = chainId ? tokens.filter((t) => t.chain === chainId) : tokens.slice(0, 120);
     const cached = tokenCache.get(cacheKey);
 
+    // Set static data immediately (non-blocking)
     setModalTokens(cached?.length ? cached : fallbackTokens);
+    setLoading(false);
 
-    if (!canFetch) {
-      setModalTokens(fallbackTokens);
-      setLoading(false);
-      return undefined;
-    }
-
-    setLoading(true);
+    // Fetch live tokens asynchronously in background without blocking UI
     const fetchTarget = chainId !== null ? chainId : (availableChains.length > 0 ? availableChains.map((c) => c.id) : undefined);
 
-    fetchLiveTokens(fetchTarget)
-      .then((data) => {
-        if (cancelled) return;
-        const final = data.length ? data : fallbackTokens;
-        tokenCache.set(cacheKey, final);
-        setModalTokens(final);
-      })
-      .catch((err) => {
-        console.error(err);
-        if (!cancelled) setModalTokens(fallbackTokens);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    if (fetchTarget !== undefined && !cached?.length) {
+      const params = Array.isArray(fetchTarget) 
+        ? `?chains=${fetchTarget.join(',')}`
+        : `?chainId=${fetchTarget}`;
+
+      fetchWithTimeout(`/api/tokens${params}`, {}, FETCH_TIMEOUT)
+        .then(async (res) => {
+          if (cancelled) return;
+          if (res?.ok) {
+            const data = await res.json();
+            if (data?.tokens?.length) {
+              const mergedTokens = mergeTokenLists(fallbackTokens, data.tokens);
+              tokenCache.set(cacheKey, mergedTokens);
+              setModalTokens(mergedTokens);
+            }
+          }
+        })
+        .catch(() => {
+          // Timeout or network error - keep static data (already set)
+        });
+    }
 
     return () => { cancelled = true; };
-  }, [chainId, availableChains, query]);
+  }, [chainId, availableChains]);
 
   const pool = useMemo(
     () => (memeFilter ? tokens.filter((t) => t.tag === 'MEME') : modalTokens),
@@ -83,100 +121,114 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
     () => pool.filter((t) => {
-      const matchesQuery = !q || t.sym.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || (t.address || '').toLowerCase().includes(q);
+      const symbolMatch = (t.sym || '').toLowerCase().includes(q);
+      const nameMatch = (t.name || '').toLowerCase().includes(q);
+      const addressMatch = (t.address || '').toLowerCase().includes(q);
+      const matchesQuery = !q || symbolMatch || nameMatch || addressMatch;
       const matchesChain = memeFilter || !chainId || t.chain === chainId;
       return matchesQuery && matchesChain;
     }),
     [pool, q, memeFilter, chainId],
   );
 
-  const MAX_RENDERED = 140;
-  const visibleTokens = useMemo(() => filtered.slice(0, MAX_RENDERED), [filtered]);
-  const hasMoreTokens = filtered.length > MAX_RENDERED;
+  const filteredChains = useMemo(
+    () => availableChains.filter((chain) => {
+      const label = `${chain.name} ${chain.key}`.toLowerCase();
+      return !chainQuery || label.includes(chainQuery.toLowerCase());
+    }),
+    [availableChains, chainQuery],
+  );
+
+  const visibleTokens = useMemo(() => filtered, [filtered]);
   const chainInfoMap = useMemo(
     () => new Map(availableChains.map((c) => [c.id, c])),
     [availableChains],
   );
-
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-content">
-        <div className="modal-header">
-          <h2>Select {field === 'from' ? 'Pay Token' : 'Receive Token'}</h2>
+      <div className="modal-content token-select-modal">
+        <div className="modal-header token-select-header">
+          <h2>Select {field === 'from' ? 'Origin Token' : 'Token'}</h2>
           <button className="close-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
-        <div className="modal-body">
-          <div className="modal-search-box">
-            <Search size={16} />
-            <input
-              type="text"
-              className="modal-search-input"
-              placeholder="Search token name or paste address..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-              style={{ paddingLeft: 40 }}
-            />
-          </div>
 
-          <div className="chain-pills">
-            <div
-              className={`chain-pill ${chainId === null && !memeFilter ? 'active' : ''}`}
-              onClick={() => { setChainId(null); setMemeFilter(false); }}
-            >
-              <span>All Chains</span>
+        <div className="token-select-body">
+          <aside className="token-chain-panel">
+            <div className="token-search-box">
+              <Search size={16} />
+              <input
+                type="text"
+                className="modal-search-input"
+                placeholder="Search Chains"
+                value={chainQuery}
+                onChange={(e) => setChainQuery(e.target.value)}
+              />
             </div>
-            <div
-              className={`chain-pill meme-pill ${memeFilter ? 'active' : ''}`}
-              onClick={() => setMemeFilter((v) => !v)}
-            >
-              <span>🔥 Memes</span>
-            </div>
-            {availableChains.map((c) => (
-              <div
-                key={c.id}
-                className={`chain-pill ${!memeFilter && chainId === c.id ? 'active' : ''}`}
-                onClick={() => { setMemeFilter(false); setChainId(chainId === c.id ? null : c.id); }}
+
+            <div className="token-chain-list">
+              <button
+                className={`token-chain-item ${chainId === null && !memeFilter ? 'active' : ''}`}
+                onClick={() => { setChainId(null); setMemeFilter(false); }}
               >
-                <img className="chain-pill-logo" src={c.logo} alt={c.name} />
-                <span>{c.name}</span>
-              </div>
-            ))}
-          </div>
+                <img className="chain-pill-logo token-chain-all-logo" src="/Allswapchain/all-swap-chain.png" alt="All chains" />
+                <span>All</span>
+              </button>
 
-          <div className="token-list">
-            {loading && modalTokens.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-dim)' }}></div>
-            ) : filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-dim)' }}>No tokens found</div>
-            ) : (
-              visibleTokens.map((t) => {
-                const chainInfo = chainInfoMap.get(t.chain);
-                return (
-                  <div className="token-item" key={`${t.chain}-${t.address}`} onClick={() => onSelect(t)}>
-                    <div className="token-item-left">
-                      <img className="token-logo" src={t.logo} alt={t.sym} />
-                      <div className="token-item-info">
-                        <span className="token-item-sym">{t.sym}{t.tag && <span className="meme-tag">{t.tag}</span>}</span>
-                        <span className="token-item-name">{t.name}</span>
-                      </div>
-                    </div>
-                    {chainInfo && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-dim)' }}>
-                        <img className="token-chain-logo" src={chainInfo.logo} alt={chainInfo.name} />
-                        <span>{chainInfo.name}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+              <div className="token-chain-group-title">All Chains</div>
+              {filteredChains.map((c) => (
+                <button
+                  key={c.id}
+                  className={`token-chain-item ${!memeFilter && chainId === c.id ? 'active' : ''}`}
+                  onClick={() => { setMemeFilter(false); setChainId(chainId === c.id ? null : c.id); }}
+                >
+                  <img className="chain-pill-logo" src={c.logo} alt={c.name} />
+                  <span>{c.name}</span>
+                  {chainId === c.id && <span className="token-chain-check">✓</span>}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <section className="token-token-panel">
+            <div className="token-search-box">
+              <Search size={16} />
+              <input
+                type="text"
+                className="modal-search-input"
+                placeholder="Search Tokens"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+
+            {loading && (
+              <div className="token-live-indicator">Loading live token data…</div>
             )}
-            {hasMoreTokens && (
-              <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)' }}>
-                Showing first {MAX_RENDERED} tokens. Narrow your search or choose a chain.
+
+            <div className="token-collection">
+              <h3>All Tokens</h3>
+              <div className="token-list">
+                {loading && modalTokens.length === 0 ? (
+                  <div className="token-empty-state">Loading tokens…</div>
+                ) : visibleTokens.length === 0 ? (
+                  <div className="token-empty-state">No tokens found</div>
+                ) : (
+                  visibleTokens.map((t) => (
+                    <button type="button" className="token-item" key={`${t.chain}-${t.address || t.sym}`} onClick={() => onSelect(t)}>
+                      <div className="token-item-left">
+                        <img className="token-logo" src={t.logo} alt={t.sym} />
+                        <div className="token-item-info">
+                          <span className="token-item-sym">{t.sym}</span>
+                          <span className="token-item-name">{t.name}</span>
+                        </div>
+                      </div>
+                      <span className="token-chain-badge">{chainInfoMap.get(t.chain)?.name || 'Chain'}</span>
+                    </button>
+                  ))
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
