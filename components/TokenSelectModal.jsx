@@ -7,6 +7,7 @@ import { chains, tokens } from '@/lib/data';
 const tokenCache = new Map();
 let chainsCache = null;
 const FETCH_TIMEOUT = 20000; // Allow the server time to finish the LiFi request.
+const TOKEN_CHAIN_BATCH_SIZE = 8;
 
 function mergeTokenLists(staticTokens, liveTokens) {
   const merged = new Map(
@@ -77,7 +78,10 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
 
   useEffect(() => {
     let cancelled = false;
-    const cacheKey = String(chainId ?? 'all');
+    const targetChainIds = chainId !== null
+      ? [chainId]
+      : availableChains.map((chain) => chain.id);
+    const cacheKey = `${chainId ?? 'all'}:${targetChainIds.join(',')}`;
     const fallbackTokens = chainId ? tokens.filter((t) => t.chain === chainId) : tokens.slice(0, 120);
     const cached = tokenCache.get(cacheKey);
 
@@ -86,23 +90,25 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
     setLoading(false);
 
     // Fetch live tokens asynchronously in background without blocking UI
-    const fetchTarget = chainId !== null ? chainId : (availableChains.length > 0 ? availableChains.map((c) => c.id) : undefined);
+    if (targetChainIds.length > 0 && !cached?.length) {
+      const batches = [];
+      for (let index = 0; index < targetChainIds.length; index += TOKEN_CHAIN_BATCH_SIZE) {
+        batches.push(targetChainIds.slice(index, index + TOKEN_CHAIN_BATCH_SIZE));
+      }
 
-    if (fetchTarget !== undefined && !cached?.length) {
-      const params = Array.isArray(fetchTarget) 
-        ? `?chains=${fetchTarget.join(',')}`
-        : `?chainId=${fetchTarget}`;
-
-      fetchWithTimeout(`/api/tokens${params}`, {}, FETCH_TIMEOUT)
-        .then(async (res) => {
+      Promise.all(batches.map(async (batch) => {
+        const response = await fetchWithTimeout(`/api/tokens?chains=${batch.join(',')}`, {}, FETCH_TIMEOUT);
+        if (!response?.ok) return [];
+        const data = await response.json();
+        return data?.tokens || [];
+      }))
+        .then((liveTokenBatches) => {
           if (cancelled) return;
-          if (res?.ok) {
-            const data = await res.json();
-            if (data?.tokens?.length) {
-              const mergedTokens = mergeTokenLists(fallbackTokens, data.tokens);
-              tokenCache.set(cacheKey, mergedTokens);
-              setModalTokens(mergedTokens);
-            }
+          const liveTokens = liveTokenBatches.flat();
+          if (liveTokens.length > 0) {
+            const mergedTokens = mergeTokenLists(fallbackTokens, liveTokens);
+            tokenCache.set(cacheKey, mergedTokens);
+            setModalTokens(mergedTokens);
           }
         })
         .catch(() => {
