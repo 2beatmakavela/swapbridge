@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ArrowRight, RefreshCw, Settings, Zap } from 'lucide-react';
 
 const CHAINS = [
@@ -252,7 +251,6 @@ function FlowDiagram({ flows }) {
 }
 
 export default function BoltswapLanding() {
-  const router = useRouter();
   const live = useLiveBridgeData();
   const [activeRange, setActiveRange] = useState('All time');
   const [email, setEmail] = useState('');
@@ -303,11 +301,7 @@ export default function BoltswapLanding() {
           <div className="relative max-w-md mx-auto rounded-3xl border border-neutral-800 bg-neutral-950/80 backdrop-blur p-6 shadow-2xl shadow-black/60">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-1 rounded-full bg-neutral-900 p-1">
-                <button
-                  type="button"
-                  onMouseEnter={() => router.push('/app')}
-                  className="rounded-full bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-white"
-                >
+                <button type="button" className="rounded-full bg-neutral-700 px-3 py-1.5 text-sm font-semibold text-white">
                   Swap &amp; Bridge
                 </button>
                 <button type="button" className="px-3 py-1.5 text-sm font-medium text-neutral-500">Private</button>
