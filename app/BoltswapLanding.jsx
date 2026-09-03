@@ -426,8 +426,12 @@ export default function BoltswapLanding() {
             <div className="flex flex-wrap justify-between gap-10 mb-12">
               <div className="max-w-xs">
                 <div className="flex items-center gap-2 mb-6">
-                  <Zap className="h-6 w-6 text-teal-400" fill="currentColor" />
-                  <span className="font-semibold tracking-widest text-lg text-teal-400">BOLTSWAP</span>
+                  <img
+                    src="/icons/apple-touch-icon-180x180.png"
+                    alt="BoltSwap logo"
+                    className="h-8 w-8 rounded-[10px] object-contain"
+                  />
+                  <span className="font-semibold tracking-widest text-lg text-[#653CA2]">BOLTSWAP</span>
                 </div>
                 <label className="block text-sm text-neutral-400 mb-3">Get the latest from Boltswap.</label>
                 <form className="flex gap-2" onSubmit={handleSubscribe}>
