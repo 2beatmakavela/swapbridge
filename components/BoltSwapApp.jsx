@@ -10,15 +10,9 @@ import BackgroundCanvas from './BackgroundCanvas';
 
 const LoadingFallback = () => <div className="loading-fallback">Loading...</div>;
 
-const EarnSection = dynamic(() => import('./EarnSection'), {
-  loading: LoadingFallback,
-});
-const PortfolioSection = dynamic(() => import('./PortfolioSection'), {
-  loading: LoadingFallback,
-});
-const MissionsSection = dynamic(() => import('./MissionsSection'), {
-  loading: LoadingFallback,
-});
+import EarnSection from './EarnSection';
+import PortfolioSection from './PortfolioSection';
+import MissionsSection from './MissionsSection';
 const TokenSelectModal = dynamic(() => import('./TokenSelectModal'), {
   loading: LoadingFallback,
 });
@@ -68,6 +62,22 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
   const [transactions, setTransactions] = useState([]);
   const [showRoute, setShowRoute] = useState(false);
   const [activeModal, setActiveModal] = useState(null); // { type: 'token'|'send'|'connect'|'settings'|'scan', field? }
+
+  useEffect(() => {
+    const preload = () => {
+      import('./TokenSelectModal');
+      import('./SendToWalletModal');
+      import('./ConnectWalletModal');
+      import('./SettingsModal');
+      import('./ScanTransactionsModal');
+    };
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(preload, { timeout: 1500 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+    const timeoutId = window.setTimeout(preload, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   // Restore state from the URL on first load (shareable swap links).
   useEffect(() => {
