@@ -8,6 +8,7 @@ const tokenCache = new Map();
 let chainsCache = null;
 const FETCH_TIMEOUT = 20000; // Allow the server time to finish the LiFi request.
 const BACKGROUND_BATCH_SIZE = 20;
+const TOKEN_BATCH_CONCURRENCY = 2;
 
 function splitIntoBatches(items, size) {
   const batches = [];
@@ -121,15 +122,22 @@ export default function TokenSelectModal({ field, defaultChainId, onClose, onSel
 
       (async () => {
         let mergedTokens = fallbackTokens;
-        for (const batch of batches) {
-          const response = await fetchWithTimeout(`/api/tokens?chains=${batch.join(',')}`, {}, FETCH_TIMEOUT);
-          if (!response?.ok) continue;
-          const data = await response.json();
-          mergedTokens = mergeTokenLists(mergedTokens, data?.tokens || []);
-          if (!cancelled && mergedTokens.length > fallbackTokens.length) {
-            tokenCache.set(cacheKey, mergedTokens);
-            setModalTokens(mergedTokens);
+        for (let index = 0; index < batches.length; index += TOKEN_BATCH_CONCURRENCY) {
+          const completed = await Promise.all(batches.slice(index, index + TOKEN_BATCH_CONCURRENCY).map(async (batch) => {
+            const response = await fetchWithTimeout(`/api/tokens?chains=${batch.join(',')}`, {}, FETCH_TIMEOUT);
+            if (!response?.ok) return [];
+            const data = await response.json();
+            return data?.tokens || [];
+          }));
+          for (const liveTokens of completed) {
+            mergedTokens = mergeTokenLists(mergedTokens, liveTokens);
+            if (!cancelled && mergedTokens.length > fallbackTokens.length) {
+              setModalTokens(mergedTokens);
+            }
           }
+        }
+        if (!cancelled && mergedTokens.length > fallbackTokens.length) {
+          tokenCache.set(cacheKey, mergedTokens);
         }
       })().catch(() => {
         // Timeout or network error - keep static data (already set)
