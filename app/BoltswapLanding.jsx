@@ -122,6 +122,30 @@ function SecondsAgo({ date }) {
   return <span>{secs < 60 ? `${secs}s ago` : `${Math.round(secs / 60)}m ago`}</span>;
 }
 
+function MovingFlow({ d, className, strokeWidth, opacity, delay = 0 }) {
+  return (
+    <path
+      d={d}
+      fill="none"
+      className={className}
+      stroke="white"
+      strokeOpacity={opacity}
+      strokeWidth={Math.max(1.5, strokeWidth * 0.28)}
+      strokeDasharray="3 28"
+      strokeLinecap="round"
+    >
+      <animate
+        attributeName="stroke-dashoffset"
+        from="0"
+        to="-31"
+        dur="1.8s"
+        begin={`${delay}s`}
+        repeatCount="indefinite"
+      />
+    </path>
+  );
+}
+
 function FlowDiagram({ flows }) {
   const width = 1000;
   const height = Math.max(460, Math.max(
@@ -166,15 +190,23 @@ function FlowDiagram({ flows }) {
           const curveOffset = 70 + (i % 4) * 24;
           const curveDirection = i % 2 === 0 ? 1 : -1;
           return (
-            <path
-              key={`connector-${f.from}-${i}`}
-              d={`M ${x1},${y1} C ${midX - 80},${y1 + curveOffset * curveDirection} ${midX + 80},${y2 - curveOffset * curveDirection} ${x2},${y2}`}
-              fill="none"
-              className={STROKE_CLASSES[colorFor(f.from)]}
-              strokeOpacity={0.35}
-              strokeWidth={3}
-              strokeLinecap="round"
-            />
+            <g key={`connector-${f.from}-${i}`}>
+              <path
+                d={`M ${x1},${y1} C ${midX - 80},${y1 + curveOffset * curveDirection} ${midX + 80},${y2 - curveOffset * curveDirection} ${x2},${y2}`}
+                fill="none"
+                className={STROKE_CLASSES[colorFor(f.from)]}
+                strokeOpacity={0.35}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+              <MovingFlow
+                d={`M ${x1},${y1} C ${midX - 80},${y1 + curveOffset * curveDirection} ${midX + 80},${y2 - curveOffset * curveDirection} ${x2},${y2}`}
+                className={STROKE_CLASSES[colorFor(f.from)]}
+                strokeWidth={3}
+                opacity={0.8}
+                delay={(i % 6) * 0.18}
+              />
+            </g>
           );
         })}
         {flows.map((f, i) => {
@@ -183,17 +215,25 @@ function FlowDiagram({ flows }) {
           const x1 = 8;
           const x2 = width - 8;
           const midX = width / 2;
-          const strokeWidth = 3 + (f.volume / maxVol) * 26;
+          const strokeWidth = 1.5 + (f.volume / maxVol) * 12;
           return (
-            <path
-              key={`${f.name}-${i}`}
-              d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
-              fill="none"
-              className={STROKE_CLASSES[colorFor(f.from)]}
-              strokeOpacity={0.5}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-            />
+            <g key={`${f.name}-${i}`}>
+              <path
+                d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+                fill="none"
+                className={STROKE_CLASSES[colorFor(f.from)]}
+                strokeOpacity={0.5}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+              />
+              <MovingFlow
+                d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+                className={STROKE_CLASSES[colorFor(f.from)]}
+                strokeWidth={strokeWidth}
+                opacity={0.95}
+                delay={(i % 8) * 0.14}
+              />
+            </g>
           );
         })}
       </svg>
