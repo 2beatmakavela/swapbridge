@@ -124,7 +124,10 @@ function SecondsAgo({ date }) {
 
 function FlowDiagram({ flows }) {
   const width = 1000;
-  const height = 460;
+  const height = Math.max(460, Math.max(
+    new Set(flows.map((flow) => flow.from)).size,
+    new Set(flows.map((flow) => flow.to)).size,
+  ) * 34 + 60);
   const padY = 30;
 
   const leftChains = useMemo(() => [...new Set(flows.map((f) => f.from))], [flows]);
@@ -149,7 +152,7 @@ function FlowDiagram({ flows }) {
         ))}
       </div>
 
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-95" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height: `${height}px` }} preserveAspectRatio="none">
         {flows.map((f, i) => {
           const y1 = yFor(leftChains, f.from);
           const y2 = yFor(rightChains, f.to);
