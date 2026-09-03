@@ -78,30 +78,17 @@ function useLiveBridgeData(refreshMs = 90000) {
   const load = useCallback(async () => {
     setState((s) => ({ ...s, status: s.flows.length ? 'refreshing' : 'loading' }));
     try {
-      const [bridgesRes, chainsRes] = await Promise.all([
-        fetch('https://bridges.llama.fi/bridges?includeChains=true'),
-        fetch('https://api.llama.fi/chains'),
-      ]);
-      if (!bridgesRes.ok) throw new Error('bridges request failed');
-      const bridgesJson = await bridgesRes.json();
-      const chainsJson = chainsRes.ok ? await chainsRes.json() : [];
-      const list = Array.isArray(bridgesJson?.bridges) ? bridgesJson.bridges : bridgesJson;
-
-      const cleaned = (list || [])
-        .filter((b) => Array.isArray(b.chains) && b.chains.length >= 2 && Number(b.volumePrevDay) > 0)
-        .map((b) => ({ name: b.displayName || b.name, from: b.chains[0], to: b.chains[1], volume: Number(b.volumePrevDay) }))
-        .sort((a, b) => b.volume - a.volume)
-        .slice(0, 9);
-
-      const volume24h = (list || []).reduce((sum, b) => sum + (Number(b.volumePrevDay) || 0), 0);
+      const response = await fetch('/api/bridge-stats');
+      if (!response.ok) throw new Error('live bridge stats request failed');
+      const data = await response.json();
 
       setState({
         status: 'ready',
-        flows: cleaned,
-        chainCount: Array.isArray(chainsJson) ? chainsJson.length : null,
-        bridgeCount: (list || []).length,
-        volume24h,
-        updatedAt: new Date(),
+        flows: data.flows || [],
+        chainCount: data.chains,
+        bridgeCount: data.bridges,
+        volume24h: data.volume24h,
+        updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
       });
     } catch (err) {
       setState({
