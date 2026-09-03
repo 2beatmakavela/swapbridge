@@ -132,6 +132,10 @@ function FlowDiagram({ flows }) {
 
   const leftChains = useMemo(() => [...new Set([...CHAINS, ...flows.map((f) => f.from)])], [flows]);
   const rightChains = useMemo(() => [...new Set([...CHAINS, ...flows.map((f) => f.to)])], [flows]);
+  const connectorFlows = useMemo(() => leftChains.map((from, index) => ({
+    from,
+    to: rightChains[(index * 7 + 5) % rightChains.length],
+  })), [leftChains, rightChains]);
 
   const yFor = (arr, name) => {
     const i = arr.indexOf(name);
@@ -153,6 +157,26 @@ function FlowDiagram({ flows }) {
       </div>
 
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height: `${height}px` }} preserveAspectRatio="none">
+        {connectorFlows.map((f, i) => {
+          const y1 = yFor(leftChains, f.from);
+          const y2 = yFor(rightChains, f.to);
+          const x1 = 8;
+          const x2 = width - 8;
+          const midX = width / 2;
+          const curveOffset = 70 + (i % 4) * 24;
+          const curveDirection = i % 2 === 0 ? 1 : -1;
+          return (
+            <path
+              key={`connector-${f.from}-${i}`}
+              d={`M ${x1},${y1} C ${midX - 80},${y1 + curveOffset * curveDirection} ${midX + 80},${y2 - curveOffset * curveDirection} ${x2},${y2}`}
+              fill="none"
+              className={STROKE_CLASSES[colorFor(f.from)]}
+              strokeOpacity={0.35}
+              strokeWidth={3}
+              strokeLinecap="round"
+            />
+          );
+        })}
         {flows.map((f, i) => {
           const y1 = yFor(leftChains, f.from);
           const y2 = yFor(rightChains, f.to);
