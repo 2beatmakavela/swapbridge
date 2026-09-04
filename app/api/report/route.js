@@ -34,6 +34,15 @@ function sanitizeData(data) {
   return safeData;
 }
 
+function deliveryDetails(results) {
+  return Object.fromEntries(
+    Object.entries(results).map(([provider, delivery]) => [provider, {
+      ok: delivery.ok,
+      ...(delivery.error ? { error: String(delivery.error).substring(0, 300) } : {}),
+    }])
+  );
+}
+
 export async function OPTIONS(request) {
   return addCorsHeaders(handleCorsPreFlight(request), request);
 }
@@ -162,9 +171,7 @@ export async function POST(request) {
           JSON.stringify({ 
             ok: true, 
             message: 'Report received and processed',
-            deliveries: Object.fromEntries(
-              Object.entries(result.results).map(([provider, delivery]) => [provider, delivery.ok])
-            ),
+            deliveries: deliveryDetails(result.results),
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         ),
@@ -177,9 +184,7 @@ export async function POST(request) {
           JSON.stringify({ 
             ok: false, 
             error: 'Failed to process report',
-            deliveries: Object.fromEntries(
-              Object.entries(result.results).map(([provider, delivery]) => [provider, delivery.ok])
-            ),
+            deliveries: deliveryDetails(result.results),
           }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         ),
