@@ -8,7 +8,11 @@ import { receiveAmountFormatted } from '@/lib/format';
 import { useQuote } from '@/hooks/useQuote';
 import BackgroundCanvas from './BackgroundCanvas';
 
-const LoadingFallback = () => <div className="loading-fallback">Loading...</div>;
+const LoadingFallback = () => (
+  <div className="loading-fallback" role="status" aria-label="Loading">
+    <span className="loading-fallback-spinner" />
+  </div>
+);
 
 import EarnSection from './EarnSection';
 import PortfolioSection from './PortfolioSection';
@@ -79,7 +83,7 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  
+  // Restore state from the URL on first load (shareable swap links).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fromChainId = params.get('fromChain');
@@ -97,10 +101,11 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
       if (token) setToToken(token);
     }
     if (amount) setSendAmount(amount);
-
+    // Intentionally run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
- 
+  // Keep the URL in sync with the current swap so it stays shareable.
   useEffect(() => {
     const params = new URLSearchParams();
     if (fromToken) {
