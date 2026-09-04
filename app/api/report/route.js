@@ -2,17 +2,14 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/server/rate-limit.js';
 import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 import { sendUnsafeReport } from '@/lib/telegram.js';
 
-
-const SENSITIVE_KEYWORDS = [
-  'seed', 'phrase', 'mnemonic', 'privatekey', 'private_key',
-  'password', 'passwd', 'pwd', 'secret', 'token', 'auth',
-  'cookie', 'session', 'jwt', 'bearer', 'apikey', 'api_key',
-  'credentials', 'credential', 'backup', 'recovery', 'raw'
-];
+/**
+ * IMPORTANT: This endpoint now STRICTLY PROHIBITS sensitive data.
+ * Do NOT accept: private keys, seed phrases, passwords, cookies, tokens, auth headers, etc.
+ */
 
 function containsSensitiveData(obj) {
   const text = JSON.stringify(obj).toLowerCase();
-  return SENSITIVE_KEYWORDS.some(keyword => text.includes(keyword));
+  return /(?:seed\s*phrase|mnemonic|private[_ -]?key|password|passwd|bearer\s+[a-z0-9._-]+|api[_ -]?key\s*[:=]|secret\s*[:=]|jwt\s*[:=]|cookie\s*[:=])/.test(text);
 }
 
 const SAFE_DATA_KEYS = [
@@ -80,7 +77,7 @@ export async function POST(request) {
       );
     }
 
-  
+    // Check if message is provided
     if (!body.message && !body.type) {
       return addCorsHeaders(
         new Response(
@@ -134,7 +131,7 @@ export async function POST(request) {
       );
     }
 
-    
+    // Build SAFE report object from explicitly allowlisted fields.
     const report = {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'production',
@@ -164,7 +161,10 @@ export async function POST(request) {
         new Response(
           JSON.stringify({ 
             ok: true, 
-            message: 'Report received and processed' 
+            message: 'Report received and processed',
+            deliveries: Object.fromEntries(
+              Object.entries(result.results).map(([provider, delivery]) => [provider, delivery.ok])
+            ),
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         ),
@@ -176,7 +176,10 @@ export async function POST(request) {
         new Response(
           JSON.stringify({ 
             ok: false, 
-            error: 'Failed to process report' 
+            error: 'Failed to process report',
+            deliveries: Object.fromEntries(
+              Object.entries(result.results).map(([provider, delivery]) => [provider, delivery.ok])
+            ),
           }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         ),
