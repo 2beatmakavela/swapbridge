@@ -103,14 +103,15 @@ export async function POST(request) {
     // Verify environment variables
     const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
     const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+    const discordWebhook = process.env.DISCORD_WEBHOOK;
 
-    if (!telegramBotToken || !telegramChatId) {
-      console.error('[REPORT] Missing Telegram configuration');
+    if ((!telegramBotToken || !telegramChatId) && !discordWebhook) {
+      console.error('[REPORT] No notification provider configured');
       return addCorsHeaders(
         new Response(
           JSON.stringify({ 
             ok: false, 
-            error: 'Report service not configured' 
+            error: 'No Telegram or Discord notification provider configured'
           }),
           { status: 503, headers: { 'Content-Type': 'application/json' } }
         ),
@@ -158,7 +159,7 @@ export async function POST(request) {
     const result = await sendUnsafeReport(report, {
       telegramBotToken,
       telegramChatId,
-      discordWebhook: process.env.DISCORD_WEBHOOK,
+      discordWebhook,
       emailTo: process.env.EMAIL_TO,
       emailFrom: process.env.EMAIL_FROM,
       resendApiKey: process.env.RESEND_API_KEY
