@@ -42,6 +42,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.loading-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.loading-fallback-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(139, 92, 246, 0.2);
+  border-top-color: var(--purple);
+  border-right-color: var(--cyan);
+  border-radius: 50%;
+  animation: routeLoadingSpin 0.8s linear infinite;
+  filter: drop-shadow(0 0 8px var(--purple-glow));
+}
+
 .route-loading {
   min-height: 100vh;
   display: grid;
