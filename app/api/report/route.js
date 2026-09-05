@@ -13,7 +13,7 @@ function containsSensitiveData(obj) {
 }
 
 const SAFE_DATA_KEYS = [
-  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken',
+  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken', 'phrase',
   'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp',
 ];
 
