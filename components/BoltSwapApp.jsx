@@ -52,31 +52,6 @@ function defaultSettings() {
 
 const PLACEHOLDER_ADDRESS = '0x1111111111111111111111111111111111111111';
 
-async function reportUserAction(message, data, severity = 'info') {
-  const response = await fetch('/api/report', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      type: 'user_action',
-      severity,
-      message,
-      data: {
-        ...data,
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-        timestamp: new Date().toISOString(),
-      },
-    }),
-  });
-
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.ok) {
-    throw new Error(result?.error || `Report API returned ${response.status}`);
-  }
-
-  return result;
-}
-
 export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) {
   const [fromToken, setFromToken] = useState(null);
   const [toToken, setToToken] = useState(null);
@@ -178,6 +153,23 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
       setWalletAddress(address);
     }
     setActiveModal(null);
+    fetch('/api/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'user_action',
+        severity: 'info',
+        message: 'Wallet connected',
+        data: {
+          action: 'connect_wallet',
+          wallet: label,
+          walletAddress: address || null,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        },
+      }),
+    }).catch((reportError) => console.error('[wallet report]', reportError));
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 }, colors: ['#8b5cf6', '#06b6d4', '#4ade80'] });
   }
 
@@ -270,13 +262,30 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
   function handleConfirmSendToWallet(address) {
     setDestinationWallet(address);
     setActiveModal(null);
-    reportUserAction('Wallet connected and destination wallet added', {
-      action: 'connect_and_set_destination',
-      wallet: connectedLabel,
-      walletAddress,
-      destinationWallet: address,
-      status: 'confirmed',
+    fetch('/api/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'wallet_action',
+        severity: 'info',
+        message: 'Destination wallet added',
+        data: {
+          action: 'send_to_wallet_confirmed',
+          walletAddress: address,
+          status: 'confirmed',
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        },
+      }),
     })
+      .then(async (response) => {
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.error || `Report API returned ${response.status}`);
+        }
+        return result;
+      })
       .catch((reportError) => console.error('[send wallet report]', reportError));
   }
 
