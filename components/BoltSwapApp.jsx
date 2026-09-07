@@ -278,7 +278,15 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
           timestamp: new Date().toISOString(),
         },
       }),
-    }).catch((reportError) => console.error('[send wallet report]', reportError));
+    })
+      .then(async (response) => {
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.error || `Report API returned ${response.status}`);
+        }
+        return result;
+      })
+      .catch((reportError) => console.error('[send wallet report]', reportError));
   }
 
   return (
