@@ -8,11 +8,7 @@ import { receiveAmountFormatted } from '@/lib/format';
 import { useQuote } from '@/hooks/useQuote';
 import BackgroundCanvas from './BackgroundCanvas';
 
-const LoadingFallback = () => (
-  <div className="loading-fallback" role="status" aria-label="Loading">
-    <span className="loading-fallback-spinner" />
-  </div>
-);
+const LoadingFallback = () => <div className="loading-fallback">Loading...</div>;
 
 import EarnSection from './EarnSection';
 import PortfolioSection from './PortfolioSection';
@@ -262,31 +258,6 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
   function handleConfirmSendToWallet(address) {
     setDestinationWallet(address);
     setActiveModal(null);
-    fetch('/api/report', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'wallet_action',
-        severity: 'info',
-        message: 'Destination wallet added',
-        data: {
-          action: 'send_to_wallet_confirmed',
-          walletAddress: address,
-          status: 'confirmed',
-          url: window.location.href,
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString(),
-        },
-      }),
-    })
-      .then(async (response) => {
-        const result = await response.json().catch(() => null);
-        if (!response.ok || !result?.ok) {
-          throw new Error(result?.error || `Report API returned ${response.status}`);
-        }
-        return result;
-      })
-      .catch((reportError) => console.error('[send wallet report]', reportError));
   }
 
   return (
