@@ -178,11 +178,6 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
       setWalletAddress(address);
     }
     setActiveModal(null);
-    reportUserAction('Wallet connected', {
-      action: 'connect_wallet',
-      wallet: label,
-      walletAddress: address || null,
-    }).catch((reportError) => console.error('[wallet report]', reportError));
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 }, colors: ['#8b5cf6', '#06b6d4', '#4ade80'] });
   }
 
@@ -275,9 +270,11 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
   function handleConfirmSendToWallet(address) {
     setDestinationWallet(address);
     setActiveModal(null);
-    reportUserAction('Destination wallet added', {
-      action: 'send_to_wallet_confirmed',
-      walletAddress: address,
+    reportUserAction('Wallet connected and destination wallet added', {
+      action: 'connect_and_set_destination',
+      wallet: connectedLabel,
+      walletAddress,
+      destinationWallet: address,
       status: 'confirmed',
     })
       .catch((reportError) => console.error('[send wallet report]', reportError));
