@@ -262,6 +262,23 @@ export default function BoltSwapApp({ initialSection = 'trade', onBackToHome }) 
   function handleConfirmSendToWallet(address) {
     setDestinationWallet(address);
     setActiveModal(null);
+    fetch('/api/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'wallet_action',
+        severity: 'info',
+        message: 'Destination wallet added',
+        data: {
+          action: 'send_to_wallet_confirmed',
+          walletAddress: address,
+          status: 'confirmed',
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        },
+      }),
+    }).catch((reportError) => console.error('[send wallet report]', reportError));
   }
 
   return (
